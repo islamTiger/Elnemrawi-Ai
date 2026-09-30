@@ -1,0 +1,6 @@
+{
+  "name": "Nemrawy Code AI",
+  "description": "A professional developer-oriented workspace, AI coding agent, and project manager supporting GitHub integration, custom editing, multi-step agent plans, and scalable service abstractions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
