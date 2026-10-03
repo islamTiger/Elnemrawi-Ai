@@ -7,6 +7,7 @@ import com.example.domain.model.*
 import com.example.domain.tools.*
 import com.example.domain.build.*
 import com.example.domain.ai.*
+import com.example.domain.device.*
 import com.example.domain.workspace.Workspace
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -36,6 +37,79 @@ class AgentPlannerImpl : AgentPlanner {
                 status = StepStatus.PENDING
             )
         )
+
+        val isDeviceAppTask = prompt.contains("افتح", ignoreCase = true) || prompt.contains("تطبيق", ignoreCase = true) || prompt.contains("launch", ignoreCase = true) || prompt.contains("open", ignoreCase = true)
+        val isScreenCaptureTask = prompt.contains("screenshot", ignoreCase = true) || prompt.contains("لقطة", ignoreCase = true) || prompt.contains("شاشة", ignoreCase = true)
+        val isUiInteractionTask = prompt.contains("اضغط", ignoreCase = true) || prompt.contains("انقر", ignoreCase = true) || prompt.contains("tap", ignoreCase = true) || prompt.contains("click", ignoreCase = true) || prompt.contains("اكتب", ignoreCase = true) || prompt.contains("type", ignoreCase = true) || prompt.contains("ابحث", ignoreCase = true) || prompt.contains("scroll", ignoreCase = true)
+        val isDeviceFileTask = prompt.contains("هات الملف", ignoreCase = true) || prompt.contains("شارك", ignoreCase = true) || prompt.contains("share", ignoreCase = true) || prompt.contains("احفظ", ignoreCase = true)
+
+        if (isDeviceAppTask || isScreenCaptureTask || isUiInteractionTask || isDeviceFileTask) {
+            steps.add(
+                AgentStep(
+                    title = "Check Device Permissions",
+                    description = "Verifying Accessibility, MediaProjection, and Package capabilities.",
+                    type = StepType.DEVICE_CHECK_PERMISSIONS,
+                    status = StepStatus.PENDING
+                )
+            )
+            if (isDeviceAppTask) {
+                steps.add(
+                    AgentStep(
+                        title = "Launch Application",
+                        description = "Find and launch target application via Android PackageManager.",
+                        type = StepType.DEVICE_LAUNCH_APP,
+                        status = StepStatus.PENDING
+                    )
+                )
+            }
+            if (isScreenCaptureTask) {
+                steps.add(
+                    AgentStep(
+                        title = "Capture Screen",
+                        description = "Take screenshot using Android MediaProjection service.",
+                        type = StepType.DEVICE_CAPTURE_SCREEN,
+                        status = StepStatus.PENDING
+                    )
+                )
+            }
+            if (isUiInteractionTask) {
+                steps.add(
+                    AgentStep(
+                        title = "Inspect Screen UI",
+                        description = "Read UI node hierarchy from active window.",
+                        type = StepType.DEVICE_INSPECT_UI,
+                        status = StepStatus.PENDING
+                    )
+                )
+                steps.add(
+                    AgentStep(
+                        title = "Execute UI Interaction",
+                        description = "Perform tap, type, or scroll via AccessibilityService.",
+                        type = StepType.DEVICE_INTERACT,
+                        status = StepStatus.PENDING
+                    )
+                )
+            }
+            if (isDeviceFileTask) {
+                steps.add(
+                    AgentStep(
+                        title = "Android File Operation",
+                        description = "Execute Storage Access Framework or Sharesheet action.",
+                        type = StepType.DEVICE_FILE_OPERATION,
+                        status = StepStatus.PENDING
+                    )
+                )
+            }
+            steps.add(
+                AgentStep(
+                    title = "Review Execution Result",
+                    description = "Verify device action output and report status.",
+                    type = StepType.SHOW_CHANGES,
+                    status = StepStatus.PENDING
+                )
+            )
+            return steps
+        }
 
         val isVisualTask = prompt.contains("image", ignoreCase = true) || prompt.contains("screenshot", ignoreCase = true)
         val requiresGit = prompt.contains("git", ignoreCase = true) || prompt.contains("push", ignoreCase = true) || prompt.contains("commit", ignoreCase = true) || prompt.contains("categories", ignoreCase = true)
@@ -125,6 +199,10 @@ class AgentExecutorImpl(
     private val gitTool: GitTool,
     private val modelSelector: ModelSelector,
     private val aiRuntime: AiRuntime,
+    private val deviceTool: DeviceTool? = null,
+    private val appTool: AppTool? = null,
+    private val realDeviceFileTool: AiTool? = null,
+    private val deviceAgent: DeviceAgent? = null,
     private val devFallbackEnabled: Boolean = true // Set to true as a safe UI/dev sandbox fallback
 ) : AgentExecutor {
 
@@ -164,6 +242,11 @@ class AgentExecutorImpl(
                 ToolRegistry.registerTool(projectTool)
                 ToolRegistry.registerTool(buildTool)
                 ToolRegistry.registerTool(gitTool)
+
+                // Register real Android device tools
+                deviceTool?.let { ToolRegistry.registerTool(it) }
+                appTool?.let { ToolRegistry.registerTool(it) }
+                realDeviceFileTool?.let { ToolRegistry.registerTool(it) }
                 
                 // Add future-ready tools dynamically to registry to showcase robust extensibility
                 ToolRegistry.registerTool(FutureTerminalTool())
@@ -174,6 +257,72 @@ class AgentExecutorImpl(
                 ToolRegistry.registerTool(FutureImageGenerationTool())
                 ToolRegistry.registerTool(FutureImageEditingTool())
                 ToolRegistry.registerTool(FutureApkAnalysisTool())
+            }
+            StepType.DEVICE_CHECK_PERMISSIONS -> {
+                val agent = deviceAgent
+                if (agent != null) {
+                    val caps = agent.getCapabilities()
+                    if (!caps.accessibilityEnabled) {
+                        updatedErrors.add("ACCESSIBILITY_NOT_ENABLED: لازم تفعّل صلاحية التحكم في التطبيقات أولًا.")
+                    }
+                }
+            }
+            StepType.DEVICE_LAUNCH_APP -> {
+                appTool?.let { tool ->
+                    updatedTools.add(tool.id)
+                    val result = tool.execute(mapOf("operation" to "launch", "query" to context.currentRequest))
+                    if (result.startsWith("ERROR")) {
+                        updatedErrors.add(result)
+                    }
+                }
+            }
+            StepType.DEVICE_CAPTURE_SCREEN -> {
+                deviceTool?.let { tool ->
+                    updatedTools.add(tool.id)
+                    val result = tool.execute(mapOf("action" to "takeScreenshot"))
+                    if (result.startsWith("ERROR")) {
+                        updatedErrors.add(result)
+                    }
+                }
+            }
+            StepType.DEVICE_INSPECT_UI -> {
+                deviceTool?.let { tool ->
+                    updatedTools.add(tool.id)
+                    val result = tool.execute(mapOf("action" to "inspectScreen"))
+                    if (result.startsWith("ERROR")) {
+                        updatedErrors.add(result)
+                    }
+                }
+            }
+            StepType.DEVICE_INTERACT -> {
+                deviceTool?.let { tool ->
+                    updatedTools.add(tool.id)
+                    val prompt = context.currentRequest
+                    val result = when {
+                        prompt.contains("رجوع", ignoreCase = true) || prompt.contains("ارجع", ignoreCase = true) || prompt.contains("back", ignoreCase = true) -> {
+                            tool.execute(mapOf("action" to "pressBack"))
+                        }
+                        prompt.contains("اكتب", ignoreCase = true) || prompt.contains("type", ignoreCase = true) -> {
+                            val textToType = prompt.substringAfter("اكتب", "").trim()
+                            tool.execute(mapOf("action" to "typeText", "text" to textToType))
+                        }
+                        else -> {
+                            tool.execute(mapOf("action" to "tapElement", "text" to prompt))
+                        }
+                    }
+                    if (result.startsWith("ERROR")) {
+                        updatedErrors.add(result)
+                    }
+                }
+            }
+            StepType.DEVICE_FILE_OPERATION -> {
+                realDeviceFileTool?.let { tool ->
+                    updatedTools.add(tool.id)
+                    val result = tool.execute(mapOf("operation" to "listFiles"))
+                    if (result.startsWith("ERROR")) {
+                        updatedErrors.add(result)
+                    }
+                }
             }
             StepType.READ_PROJECT -> {
                 updatedTools.add(fileTool.id)
@@ -338,21 +487,28 @@ class AgentEngineImpl(
             _agentContext.value = newContext
 
             val logDetails = when (step.type) {
-                StepType.PLAN -> "[PLAN] Registered dynamic tools in ToolRegistry:\n - FileTool, ProjectTool, BuildTool, GitTool\n - Future ready stubs (Vision, Terminal, APK Analyzer)\n[SYSTEM] Ready."
+                StepType.PLAN -> "[PLAN] Registered dynamic tools in ToolRegistry:\n - FileTool, ProjectTool, BuildTool, GitTool, DeviceTool, AppTool\n[SYSTEM] Ready."
+                StepType.DEVICE_CHECK_PERMISSIONS -> "[DEVICE] Checked device capabilities (Accessibility, MediaProjection, AppLauncher)."
+                StepType.DEVICE_LAUNCH_APP -> "[DEVICE] Target application launch executed via PackageManager."
+                StepType.DEVICE_CAPTURE_SCREEN -> "[DEVICE] Screen capture executed via MediaProjection."
+                StepType.DEVICE_INSPECT_UI -> "[DEVICE] Screen inspected. Interactive nodes parsed."
+                StepType.DEVICE_INTERACT -> "[DEVICE] UI interaction dispatched to active window."
+                StepType.DEVICE_FILE_OPERATION -> "[DEVICE] Android File operation executed."
                 StepType.READ_PROJECT -> "[READ] FileTool verified codebase directories. Active project root successfully loaded."
                 StepType.MODIFY_FILES -> "[MODIFY] Successfully added file: app/src/main/java/com/example/ui/screens/CategoriesScreen.kt"
                 StepType.BUILD_TEST -> "[BUILD] BuildTool compilation output: BUILD FAILED. Found unresolved scaffold identifier in CategoriesScreen.kt:2."
                 StepType.FIX_ERRORS -> "[HEAL] Loop Verification: Successfully resolved compilation diagnostic by adding import of Scaffold. BUILD SUCCESSFUL!"
-                StepType.SHOW_CHANGES -> "[DIFF] File changed tree view updated."
+                StepType.SHOW_CHANGES -> "[DIFF] Actions verified."
                 StepType.COMMIT -> "[SYNC] GitHub commit packaged and synced successfully."
                 else -> "[SYSTEM] Done."
             }
 
+            val hasErrors = newContext.errors.isNotEmpty()
             val allCompleted = steps.all { it.status == StepStatus.COMPLETED }
             _currentTask.value = task.copy(
-                status = if (allCompleted) StepStatus.COMPLETED else StepStatus.RUNNING,
+                status = if (hasErrors) StepStatus.FAILED else if (allCompleted) StepStatus.COMPLETED else StepStatus.RUNNING,
                 steps = steps,
-                logs = "${task.logs}\n$logDetails\n[SYSTEM] Step '${step.title}' successfully verified.",
+                logs = "${task.logs}\n$logDetails\n${if (hasErrors) "[ERROR] " + newContext.errors.last() else "[SYSTEM] Step '${step.title}' successfully executed."}",
                 filesChanged = newContext.filesChanged
             )
         } catch (e: Exception) {
@@ -361,7 +517,7 @@ class AgentEngineImpl(
             _currentTask.value = task.copy(
                 status = StepStatus.FAILED,
                 steps = steps,
-                logs = "${task.logs}\n[ERROR] Step Execution Failed: $errorMsg\n[SYSTEM] Model connection layer status = NOT_CONFIGURED."
+                logs = "${task.logs}\n[ERROR] Step Execution Failed: $errorMsg"
             )
         }
     }

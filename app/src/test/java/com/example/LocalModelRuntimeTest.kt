@@ -184,7 +184,7 @@ class LocalModelRuntimeTest {
                     ServiceLocator.gitTool,
                     ServiceLocator.modelSelector,
                     runtime,
-                    false
+                    devFallbackEnabled = false
                 )
                 agentExecutor.executeStep(testStep, testContext)
                 fail("Expected AgentExecutor to throw due to unconfigured local runtime")

@@ -98,6 +98,31 @@ object ServiceLocator {
         GitToolImpl(gitService)
     }
 
+    // Real Android Device Agent & Tool Infrastructure
+    val deviceCapabilityDetector: com.example.data.device.android.AndroidDeviceCapabilityDetector by lazy {
+        com.example.data.device.android.AndroidDeviceCapabilityDetector(context)
+    }
+
+    val screenCaptureManager: com.example.data.device.android.ScreenCaptureManager by lazy {
+        com.example.data.device.android.ScreenCaptureManager.instance
+    }
+
+    val deviceAgent: com.example.domain.device.DeviceAgent by lazy {
+        com.example.data.device.android.AndroidDeviceAgent(context, deviceCapabilityDetector, screenCaptureManager)
+    }
+
+    val deviceTool: com.example.domain.tools.DeviceTool by lazy {
+        com.example.data.device.tools.DeviceToolImpl(deviceAgent)
+    }
+
+    val appTool: com.example.domain.tools.AppTool by lazy {
+        com.example.data.device.tools.AppToolImpl(context)
+    }
+
+    val realDeviceFileTool: com.example.data.device.tools.RealDeviceFileTool by lazy {
+        com.example.data.device.tools.RealDeviceFileTool(context)
+    }
+
     private val agentPlanner by lazy { AgentPlannerImpl() }
     
     private val agentExecutor by lazy {
@@ -108,6 +133,10 @@ object ServiceLocator {
             gitTool,
             modelSelector,
             routingAiRuntime,
+            deviceTool = deviceTool,
+            appTool = appTool,
+            realDeviceFileTool = realDeviceFileTool,
+            deviceAgent = deviceAgent,
             devFallbackEnabled = true // Allow mock dev fallback simulation on agent workflow
         )
     }

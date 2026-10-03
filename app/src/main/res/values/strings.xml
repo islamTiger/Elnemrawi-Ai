@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Nemrawy Code AI</string>
+    <string name="accessibility_service_description">Nemrawy Device Agent accessibility service enables AI-assisted device interaction, UI inspection, and app navigation.</string>
 </resources>

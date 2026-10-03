@@ -1,6 +1,11 @@
 package com.example.ui.chat
 
+import android.app.Activity
+import android.content.Intent
+import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.device.android.ScreenCaptureManager
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.AgentTask
 import com.example.domain.model.StepStatus
@@ -49,6 +55,7 @@ fun ChatScreen(
     val selectedModel by viewModel.selectedModel.collectAsState()
     val currentWorkspace by viewModel.currentWorkspace.collectAsState()
     val currentAgentTask by viewModel.currentAgentTask.collectAsState()
+    val pendingConfirmation by viewModel.pendingConfirmation.collectAsState()
 
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -57,8 +64,17 @@ fun ChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showAdvancedDiag by remember { mutableStateOf(false) }
 
+    val screenCaptureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            ScreenCaptureManager.instance.setConsentResult(result.resultCode, result.data)
+            Toast.makeText(context, "تم تفعيل صلاحية التقاط الشاشة", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Scroll to bottom when new messages or agent tasks arrive
-    LaunchedEffect(messages.size, currentAgentTask) {
+    LaunchedEffect(messages.size, currentAgentTask, pendingConfirmation) {
         if (messages.isNotEmpty()) {
             lazyListState.animateScrollToItem(messages.size)
         }
@@ -180,7 +196,7 @@ fun ChatScreen(
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                if (messages.isEmpty() && currentAgentTask == null) {
+                if (messages.isEmpty() && currentAgentTask == null && pendingConfirmation == null) {
                     EmptyChatView(onSamplePromptSelected = { prompt ->
                         viewModel.updateInputText(prompt)
                     })
@@ -201,12 +217,75 @@ fun ChatScreen(
                             )
                         }
 
+                        // High-Impact Action Confirmation Prompt
+                        pendingConfirmation?.let { pending ->
+                            item {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    shape = MaterialTheme.shapes.medium
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            text = "تأكيد الإجراء",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = pending.warningMessage,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Button(
+                                                onClick = { viewModel.confirmHighImpactAction() },
+                                                modifier = Modifier.weight(1f),
+                                                shape = MaterialTheme.shapes.small
+                                            ) {
+                                                Text("تأكيد", fontWeight = FontWeight.Bold)
+                                            }
+                                            OutlinedButton(
+                                                onClick = { viewModel.cancelHighImpactAction() },
+                                                modifier = Modifier.weight(1f),
+                                                shape = MaterialTheme.shapes.small
+                                            ) {
+                                                Text("إلغاء", fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Compact Agent Progress Card
                         currentAgentTask?.let { task ->
                             item {
                                 CompactAgentProgressCard(
                                     task = task,
-                                    viewModel = viewModel
+                                    viewModel = viewModel,
+                                    onOpenAccessibilitySettings = {
+                                        try {
+                                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Cannot open accessibility settings", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onRequestScreenCapture = {
+                                        ScreenCaptureManager.instance.createScreenCaptureIntent(context)?.let {
+                                            screenCaptureLauncher.launch(it)
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -286,10 +365,11 @@ fun ChatScreen(
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Device Agent: Real Android Architecture Active", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Text("Accessibility Service: Registered in Manifest", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Text("MediaProjection: Official Flow Configured", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                         Text("Build System: Gradle (Kotlin DSL)", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                         Text("Active Theme: High-Contrast Monochrome", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                        Text("Inference Runtimes: Local GGUF, OpenAI Proxy", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                        Text("Agent Executor Threads: 4 Asynchronous Flows", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                         Text("Active Projects Workspace: ${currentWorkspace?.project?.name ?: "None"}", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                     }
                 },
@@ -310,9 +390,13 @@ fun ChatScreen(
 @Composable
 fun CompactAgentProgressCard(
     task: AgentTask,
-    viewModel: ChatViewModel
+    viewModel: ChatViewModel,
+    onOpenAccessibilitySettings: () -> Unit,
+    onRequestScreenCapture: () -> Unit
 ) {
     var showLogs by remember { mutableStateOf(false) }
+    val needsAccessibility = task.logs.contains("ACCESSIBILITY_NOT_ENABLED") || task.logs.contains("صلاحية التحكم")
+    val needsScreenCapture = task.logs.contains("SCREEN_CAPTURE_NOT_AVAILABLE") || task.logs.contains("MediaProjection")
 
     Card(
         modifier = Modifier
@@ -328,7 +412,7 @@ fun CompactAgentProgressCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Working on your project",
+                    text = "Working on your request",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -393,6 +477,61 @@ fun CompactAgentProgressCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+
+            // Permission Request Guidance Buttons
+            if (needsAccessibility) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "لازم تفعّل صلاحية التحكم في التطبيقات أولًا.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(
+                            onClick = onOpenAccessibilitySettings,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("فتح الإعدادات", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            if (needsScreenCapture) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "صلاحية تسجيل الشاشة مطلوبة لأخذ لقطة شاشة حقيقية.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(
+                            onClick = onRequestScreenCapture,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("السماح بالتقاط الشاشة", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -487,14 +626,14 @@ fun EmptyChatView(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "AI Coding Workspace Assistant",
+            text = "AI Coding & Device Assistant",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Explore offline code analysis models. Ask me to generate templates or optimize logic patterns. I scan your project tree for context.",
+            text = "Ask me to navigate installed apps, inspect on-screen UI elements, take screenshots, or develop project code.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -512,9 +651,10 @@ fun EmptyChatView(
         
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(
-                "Optimize a Kotlin data fetcher repository with coroutine flow.",
-                "Review build error: Unresolved reference: enableEdgeToEdge.",
-                "How do I setup Supabase bindings in my application scope?"
+                "افتح التطبيق ده وافحص الشاشة",
+                "اعمل Screenshot للشاشة الحالية",
+                "هات الملف ده من مساحة التخزين",
+                "Optimize a Kotlin data fetcher repository with coroutine flow."
             ).forEach { prompt ->
                 Card(
                     modifier = Modifier
