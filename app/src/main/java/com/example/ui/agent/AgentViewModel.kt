@@ -23,6 +23,13 @@ class AgentViewModel : ViewModel() {
             initialValue = null
         )
 
+    val agentContext = agentEngine.agentContext
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
     val projects: StateFlow<List<Project>> = projectRepository.getProjects()
         .stateIn(
             scope = viewModelScope,

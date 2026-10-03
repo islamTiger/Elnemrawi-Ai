@@ -4,11 +4,16 @@ import android.content.Context
 import com.example.data.ai.MockAiProvider
 import com.example.data.cloudflare.MockCloudflareService
 import com.example.data.files.MockProjectFileService
+import com.example.data.files.RealProjectFileService
 import com.example.data.github.MockGitService
+import com.example.data.github.RealGitService
 import com.example.data.projects.MockProjectRepository
 import com.example.data.supabase.MockSupabaseService
+import com.example.data.supabase.RealSupabaseService
 import com.example.data.terminal.MockBuildService
+import com.example.data.terminal.RealBuildService
 import com.example.data.terminal.MockCommandExecutor
+import com.example.data.terminal.RealCommandExecutor
 import com.example.data.workspace.WorkspaceManagerImpl
 import com.example.data.build.BuildSystemImpl
 import com.example.data.agent.AgentPlannerImpl
@@ -26,12 +31,20 @@ import com.example.domain.workspace.WorkspaceManager
 import com.example.domain.build.BuildSystem
 import com.example.domain.agent.AgentEngine
 import com.example.domain.model.Project
+import com.example.domain.model.ExecutionEnvironment
+import com.example.data.ai.GeminiModelProvider
+import com.example.data.ai.LocalModelProvider
 
 object ServiceLocator {
     private var applicationContext: Context? = null
+    var currentEnvironment: ExecutionEnvironment = ExecutionEnvironment.PRODUCTION
 
     fun init(context: Context) {
         applicationContext = context.applicationContext
+        
+        // Register Model Providers in the registry
+        ModelProviderRegistry.registerProvider(GeminiModelProvider())
+        ModelProviderRegistry.registerProvider(LocalModelProvider())
     }
 
     val context: Context
@@ -39,11 +52,37 @@ object ServiceLocator {
 
     val aiProvider: AiProvider by lazy { MockAiProvider() }
     val projectRepository: ProjectRepository by lazy { MockProjectRepository() }
-    val projectFileService: ProjectFileService by lazy { MockProjectFileService() }
-    val gitService: GitService by lazy { MockGitService() }
-    val commandExecutor: CommandExecutor by lazy { MockCommandExecutor() }
-    val buildService: BuildService by lazy { MockBuildService() }
-    val supabaseService: SupabaseService by lazy { MockSupabaseService() }
+    
+    val projectFileService: ProjectFileService
+        get() = when (currentEnvironment) {
+            ExecutionEnvironment.PRODUCTION -> RealProjectFileService()
+            else -> MockProjectFileService()
+        }
+
+    val gitService: GitService
+        get() = when (currentEnvironment) {
+            ExecutionEnvironment.PRODUCTION -> RealGitService()
+            else -> MockGitService()
+        }
+
+    val commandExecutor: CommandExecutor
+        get() = when (currentEnvironment) {
+            ExecutionEnvironment.PRODUCTION -> RealCommandExecutor()
+            else -> MockCommandExecutor()
+        }
+
+    val buildService: BuildService
+        get() = when (currentEnvironment) {
+            ExecutionEnvironment.PRODUCTION -> RealBuildService()
+            else -> MockBuildService()
+        }
+
+    val supabaseService: SupabaseService
+        get() = when (currentEnvironment) {
+            ExecutionEnvironment.PRODUCTION -> RealSupabaseService()
+            else -> MockSupabaseService()
+        }
+
     val cloudflareService: CloudflareService by lazy { MockCloudflareService() }
 
     // Real Local Model Manager, Repos, Engines, and Runtime

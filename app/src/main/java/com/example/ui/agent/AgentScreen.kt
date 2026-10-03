@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,6 +30,7 @@ fun AgentScreen(
     modifier: Modifier = Modifier
 ) {
     val currentTask by viewModel.currentTask.collectAsState()
+    val agentContext by viewModel.agentContext.collectAsState()
     val projects by viewModel.projects.collectAsState()
     val selectedProject by viewModel.selectedProject.collectAsState()
     val isExecuting by viewModel.isExecuting.collectAsState()
@@ -87,7 +87,7 @@ fun AgentScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "TARGET TARGET PROJECT",
+                                    text = "TARGET PROJECT",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -195,6 +195,11 @@ fun AgentScreen(
                                 }
                             }
 
+                            // Render Telemetry Card inside Left Column
+                            agentContext?.let { context ->
+                                AgentTelemetryCard(context = context)
+                            }
+
                             // Control Bar
                             AgentControlBar(
                                 task = task,
@@ -252,6 +257,11 @@ fun AgentScreen(
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
+
+                        // Render Telemetry Card in vertical stream
+                        agentContext?.let { context ->
+                            AgentTelemetryCard(context = context)
+                        }
 
                         Text(
                             text = "TERMINAL OUTPUT",
@@ -484,6 +494,85 @@ fun AgentControlBar(
             Icon(Icons.Default.Stop, "Cancel", tint = MaterialTheme.colorScheme.error)
             Spacer(modifier = Modifier.width(6.dp))
             Text("Clear Session")
+        }
+    }
+}
+
+@Composable
+fun AgentTelemetryCard(
+    context: com.example.domain.agent.AgentContext,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.small
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "NEMRAWY AGENT CORE TELEMETRY",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Intent:", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text(text = context.currentIntent ?: "UNKNOWN", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Final Status:", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text(
+                    text = context.finalStatus.name, 
+                    fontSize = 11.sp, 
+                    fontWeight = FontWeight.Bold,
+                    color = when(context.finalStatus) {
+                        com.example.domain.agent.ExecutionStatus.SUCCESS -> Color(0xFF00FF66)
+                        com.example.domain.agent.ExecutionStatus.FAILED -> Color.Red
+                        com.example.domain.agent.ExecutionStatus.NEEDS_USER_INPUT -> Color.Yellow
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Retry Count:", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text(text = "${context.retryCount} / 3", fontSize = 11.sp)
+            }
+            
+            if (context.requirements.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "Requirements:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+                Text(text = context.requirements.joinToString(", "), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            
+            if (context.unknownRequirements.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "Unknowns (No Guessing Policy):", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Yellow)
+                Text(text = context.unknownRequirements.joinToString(", "), fontSize = 10.sp, color = Color.Yellow)
+            }
+            
+            if (context.verificationEvidence.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "Verification Evidence:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF00FF66))
+                context.verificationEvidence.forEach { evidence ->
+                    Text(text = "• $evidence", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            
+            if (context.errors.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "Classified Errors:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.Red)
+                context.errors.takeLast(2).forEach { err ->
+                    Text(text = "• $err", fontSize = 10.sp, color = Color.Red)
+                }
+            }
         }
     }
 }

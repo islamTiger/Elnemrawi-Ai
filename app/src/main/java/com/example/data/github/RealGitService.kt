@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.flow
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
-class MockGitService : GitService {
+class RealGitService : GitService {
     private val vault by lazy { SecureCredentialVault(ServiceLocator.context) }
     private val _isConnected = MutableStateFlow(false)
     override val isConnected: Flow<Boolean> = _isConnected.asStateFlow()
@@ -23,16 +23,15 @@ class MockGitService : GitService {
     override val connectedAccountName: Flow<String?> = _connectedAccountName.asStateFlow()
 
     init {
-        // Automatically restore connection on startup if token is found in SecureCredentialVault
         try {
             val token = vault.getCredential("github_token")
             val username = vault.getCredential("github_account_name")
-            if (!token.isNullOrEmpty()) {
+            if (!token.isNullOrEmpty() && !username.isNullOrEmpty()) {
                 _isConnected.value = true
-                _connectedAccountName.value = username ?: "user"
+                _connectedAccountName.value = username
             }
         } catch (e: Exception) {
-            // Safe fallback
+            // Graceful initialization
         }
     }
 
@@ -74,7 +73,6 @@ class MockGitService : GitService {
             }
             emit(projects)
         } catch (e: Exception) {
-            // Emits empty or fallback list if network is offline or forbidden
             emit(emptyList())
         }
     }
@@ -86,7 +84,7 @@ class MockGitService : GitService {
             val authHeader = "token $token"
             val user = api.getCurrentUser(authHeader)
 
-            // Securely store the validated credentials in KeyStore-backed SharedPreferences
+            // Securely store validated credentials
             vault.storeCredential("github_token", token)
             vault.storeCredential("github_account_name", user.login)
 
@@ -94,16 +92,7 @@ class MockGitService : GitService {
             _connectedAccountName.value = user.login
             true
         } catch (e: Exception) {
-            // Mock connection fallback for offline sandbox testing if starting with ghp_
-            if (token.startsWith("ghp_") && token.length > 10) {
-                vault.storeCredential("github_token", token)
-                vault.storeCredential("github_account_name", "nemrawy")
-                _isConnected.value = true
-                _connectedAccountName.value = "nemrawy"
-                true
-            } else {
-                false
-            }
+            false // STRICT PRODUCTION ROUTING: NO MOCK FALLBACK IN PRODUCTION ENVIRONMENT!
         }
     }
 

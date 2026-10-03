@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.di.ServiceLocator
 import com.example.domain.ai.LocalModelState
+import com.example.data.security.SecureCredentialVault
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,8 +43,24 @@ fun SettingsScreen(
     val modelState by modelManager.modelState.collectAsState()
     val runtimeStatus = remember(currentConfig, modelState) { localRuntime.getStatus() }
     
+    val vault = remember { SecureCredentialVault(context) }
     var supabaseUrl by remember { mutableStateOf("") }
     var supabaseAnonKey by remember { mutableStateOf("") }
+    var supabaseServiceRoleKey by remember { mutableStateOf("") }
+    var supabaseStatus by remember { mutableStateOf("UNCONNECTED") }
+    var activeProjectRef by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val activeProj = vault.getCredential("supabase_active_project") ?: ""
+        if (activeProj.isNotEmpty()) {
+            activeProjectRef = activeProj
+            supabaseUrl = vault.getCredential("supabase_url_$activeProj") ?: "https://$activeProj.supabase.co"
+            supabaseAnonKey = vault.getCredential("supabase_anon_key_$activeProj") ?: ""
+            supabaseServiceRoleKey = vault.getCredential("supabase_service_role_key_$activeProj") ?: ""
+            supabaseStatus = "CONNECTED • @$activeProj"
+        }
+    }
+    
     var cloudflareAccountId by remember { mutableStateOf("") }
     var cloudflareToken by remember { mutableStateOf("") }
 
@@ -309,10 +326,10 @@ fun SettingsScreen(
                 }
                 
                 Text(
-                    text = "STATUS: UNCONNECTED • Abstraction Layer Prepared",
+                    text = "STATUS: $supabaseStatus",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (supabaseStatus.contains("CONNECTED")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Text(
@@ -344,6 +361,69 @@ fun SettingsScreen(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     )
                 )
+
+                OutlinedTextField(
+                    value = supabaseServiceRoleKey,
+                    onValueChange = { supabaseServiceRoleKey = it },
+                    label = { Text("Service Role Key (Optional)") },
+                    placeholder = { Text("Service secret key for raw SQL access") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            if (supabaseUrl.isNotEmpty() && supabaseAnonKey.isNotEmpty()) {
+                                val extractedRef = supabaseUrl
+                                    .substringAfter("https://")
+                                    .substringBefore(".supabase")
+                                    .trim()
+                                
+                                vault.storeCredential("supabase_active_project", extractedRef)
+                                vault.storeCredential("supabase_url_$extractedRef", supabaseUrl)
+                                vault.storeCredential("supabase_anon_key_$extractedRef", supabaseAnonKey)
+                                if (supabaseServiceRoleKey.isNotEmpty()) {
+                                    vault.storeCredential("supabase_service_role_key_$extractedRef", supabaseServiceRoleKey)
+                                }
+                                activeProjectRef = extractedRef
+                                supabaseStatus = "CONNECTED • @$extractedRef"
+                            }
+                        },
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Connect", fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val activeProj = vault.getCredential("supabase_active_project") ?: ""
+                            if (activeProj.isNotEmpty()) {
+                                vault.deleteCredential("supabase_active_project")
+                                vault.deleteCredential("supabase_url_$activeProj")
+                                vault.deleteCredential("supabase_anon_key_$activeProj")
+                                vault.deleteCredential("supabase_service_role_key_$activeProj")
+                            }
+                            supabaseUrl = ""
+                            supabaseAnonKey = ""
+                            supabaseServiceRoleKey = ""
+                            activeProjectRef = ""
+                            supabaseStatus = "UNCONNECTED"
+                        },
+                        shape = MaterialTheme.shapes.small,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Disconnect", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
 

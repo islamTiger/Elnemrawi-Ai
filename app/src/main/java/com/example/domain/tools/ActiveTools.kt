@@ -6,3 +6,5 @@ interface BuildTool : AiTool
 interface GitTool : AiTool
 interface AppTool : AiTool
 interface DeviceTool : AiTool
+interface BrowserTool : AiTool
+interface CodeTool : AiTool

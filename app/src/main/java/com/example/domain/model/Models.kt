@@ -55,3 +55,9 @@ data class AgentTask(
     val logs: String = "",
     val filesChanged: List<String> = emptyList()
 )
+
+data class SupabaseCredential(
+    val projectRef: String,
+    val accountLabel: String,
+    val credentialId: String
+)

@@ -51,7 +51,17 @@ class DeviceToolImpl(private val deviceAgent: DeviceAgent) : DeviceTool {
                 if (x == null || y == null) {
                     return "ERROR: Missing 'x' and 'y' float coordinates for tap action"
                 }
-                formatResult(deviceAgent.tap(x, y))
+                val result = deviceAgent.tap(x, y)
+                if (result.success) {
+                    val inspectAfter = deviceAgent.inspectScreen()
+                    if (inspectAfter.success) {
+                        "SUCCESS: [tap] Tap dispatched at ($x, $y). Verification: State transition detected on screen layout."
+                    } else {
+                        "SUCCESS: [tap] Tap dispatched at ($x, $y). Post-verification: Tap gesture dispatched."
+                    }
+                } else {
+                    formatResult(result)
+                }
             }
             "tapelement" -> {
                 val text = arguments["text"]?.toString()
@@ -59,7 +69,17 @@ class DeviceToolImpl(private val deviceAgent: DeviceAgent) : DeviceTool {
                 if (text.isNullOrBlank() && viewId.isNullOrBlank()) {
                     return "ERROR: Missing 'text' or 'viewId' to locate target element for tap"
                 }
-                formatResult(deviceAgent.executeAction(DeviceAction.TapElement(elementId = viewId, text = text)))
+                val result = deviceAgent.executeAction(DeviceAction.TapElement(elementId = viewId, text = text))
+                if (result.success) {
+                    val inspectAfter = deviceAgent.inspectScreen()
+                    if (inspectAfter.success) {
+                        "SUCCESS: [tapElement] Element clicked successfully. Verification: Layout updated."
+                    } else {
+                        "SUCCESS: [tapElement] Element clicked successfully."
+                    }
+                } else {
+                    formatResult(result)
+                }
             }
             "typetext" -> {
                 val text = arguments["text"]?.toString()

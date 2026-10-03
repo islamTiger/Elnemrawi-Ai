@@ -21,6 +21,17 @@ data class ApprovalRequest(
     val status: ApprovalStatus = ApprovalStatus.PENDING
 )
 
+enum class ExecutionStatus {
+    SUCCESS,
+    FAILED,
+    NEEDS_USER_INPUT,
+    CAPABILITY_UNAVAILABLE,
+    PERMISSION_REQUIRED,
+    VERIFICATION_FAILED,
+    PENDING,
+    RUNNING
+}
+
 data class AgentContext(
     val currentRequest: String,
     val workspace: Workspace?,
@@ -31,7 +42,20 @@ data class AgentContext(
     val filesChanged: List<String> = emptyList(),
     val buildResults: List<BuildResult> = emptyList(),
     val errors: List<String> = emptyList(),
-    val approvals: Map<String, ApprovalStatus> = emptyMap()
+    val approvals: Map<String, ApprovalStatus> = emptyMap(),
+    
+    // Core telemetry fields
+    val currentIntent: String? = null,
+    val conversationContext: String = "",
+    val requirements: List<String> = emptyList(),
+    val knownFacts: Map<String, String> = emptyMap(),
+    val unknownRequirements: List<String> = emptyList(),
+    val selectedTools: List<String> = emptyList(),
+    val executionSteps: List<String> = emptyList(),
+    val executionResults: Map<String, String> = emptyMap(),
+    val verificationEvidence: List<String> = emptyList(),
+    val retryCount: Int = 0,
+    val finalStatus: ExecutionStatus = ExecutionStatus.PENDING
 )
 
 data class AgentResult(
